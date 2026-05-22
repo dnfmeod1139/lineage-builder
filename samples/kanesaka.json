@@ -1,0 +1,389 @@
+{
+  "version": 1,
+  "lineage": "kanesaka",
+  "timeline": {
+    "start": 2000,
+    "end": 2026,
+    "pxPerYear": 63,
+    "marginTop": 60,
+    "excludedYears": []
+  },
+  "nodes": [
+    {
+      "id": "kanesaka",
+      "type": "main",
+      "name": "kanesaka",
+      "sub": "",
+      "x": 190,
+      "y": 70,
+      "color": "#1a1a18",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "saito",
+      "type": "disciple",
+      "name": "saito",
+      "sub": "",
+      "x": 80,
+      "y": 180,
+      "color": "#1a1a18",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "palace",
+      "type": "disciple",
+      "name": "palace",
+      "sub": "",
+      "x": 300,
+      "y": 270,
+      "color": "#1a1a18",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "sushiya",
+      "type": "disciple",
+      "name": "sushiya",
+      "sub": "",
+      "x": 70,
+      "y": 420,
+      "color": "#1a1a18",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "kobe",
+      "type": "disciple",
+      "name": "kobe",
+      "sub": "",
+      "x": 300,
+      "y": 420,
+      "color": "#1a1a18",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "mamoru",
+      "type": "disciple",
+      "name": "mamoru",
+      "sub": "",
+      "x": 70,
+      "y": 570,
+      "color": "#1a1a18",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "ishiyama",
+      "type": "disciple",
+      "name": "ishiyama",
+      "sub": "",
+      "x": 130,
+      "y": 700,
+      "color": "#1a1a18",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "shimizu",
+      "type": "disciple",
+      "name": "shimizu",
+      "sub": "",
+      "x": 300,
+      "y": 690,
+      "color": "#10b981",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "shota",
+      "type": "disciple",
+      "name": "shota",
+      "sub": "",
+      "x": 90,
+      "y": 820,
+      "color": "#1a1a18",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "sushiya_seoul",
+      "type": "disciple",
+      "name": "sushiya_seoul",
+      "sub": "",
+      "x": 300,
+      "y": 820,
+      "color": "#10b981",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "aoyama",
+      "type": "disciple",
+      "name": "aoyama",
+      "sub": "",
+      "x": 300,
+      "y": 935,
+      "color": "#1a1a18",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "noaya",
+      "type": "disciple",
+      "name": "noaya",
+      "sub": "",
+      "x": 300,
+      "y": 1045,
+      "color": "#10b981",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "ichiyanagi",
+      "type": "disciple",
+      "name": "ichiyanagi",
+      "sub": "",
+      "x": 70,
+      "y": 1195,
+      "color": "#1a1a18",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "fujita",
+      "type": "disciple",
+      "name": "fujita",
+      "sub": "",
+      "x": 130,
+      "y": 1050,
+      "color": "#1a1a18",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "nagatacho",
+      "type": "disciple",
+      "name": "nagatacho",
+      "sub": "",
+      "x": 300,
+      "y": 1195,
+      "color": "#1a1a18",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "kojima",
+      "type": "disciple",
+      "name": "kojima",
+      "sub": "",
+      "x": 70,
+      "y": 1345,
+      "color": "#1a1a18",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "oumi",
+      "type": "disciple",
+      "name": "oumi",
+      "sub": "",
+      "x": 150,
+      "y": 1345,
+      "color": "#1a1a18",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "fukasawa",
+      "type": "disciple",
+      "name": "fukasawa",
+      "sub": "",
+      "x": 70,
+      "y": 1495,
+      "color": "#1a1a18",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "hashira",
+      "type": "disciple",
+      "name": "hashira",
+      "sub": "",
+      "x": 300,
+      "y": 1580,
+      "color": "#10b981",
+      "photo": null,
+      "desc": ""
+    },
+    {
+      "id": "parnas",
+      "type": "disciple",
+      "name": "parnas",
+      "sub": "",
+      "x": 300,
+      "y": 1705,
+      "color": "#10b981",
+      "photo": null,
+      "desc": ""
+    }
+  ],
+  "lines": [
+    {
+      "id": "lpK_mainTrunk",
+      "type": "parent",
+      "raw": true,
+      "rawD": "M190,109 L190,1705",
+      "points": []
+    },
+    {
+      "id": "lpK_branchR",
+      "type": "parent",
+      "raw": true,
+      "rawD": "M219,70 L360,70 L360,420",
+      "points": []
+    },
+    {
+      "id": "lpK_toPalace",
+      "type": "branch",
+      "raw": true,
+      "rawD": "M360,270 L330,270",
+      "points": []
+    },
+    {
+      "id": "lpK_toKobe",
+      "type": "branch",
+      "raw": true,
+      "rawD": "M360,420 L330,420",
+      "points": []
+    },
+    {
+      "id": "lpK_toAoyama",
+      "type": "branch",
+      "raw": true,
+      "rawD": "M190,935 L271,935",
+      "points": []
+    },
+    {
+      "id": "lpK_toNagatacho",
+      "type": "branch",
+      "raw": true,
+      "rawD": "M190,1195 L271,1195",
+      "points": []
+    },
+    {
+      "id": "lpK_saitoDown",
+      "type": "parent",
+      "raw": true,
+      "rawD": "M190,180 L109,180",
+      "points": []
+    },
+    {
+      "id": "lpK_toSushiya",
+      "type": "branch",
+      "raw": true,
+      "rawD": "M190,360 L70,360 L70,391",
+      "points": []
+    },
+    {
+      "id": "lpK_toMamoru",
+      "type": "branch",
+      "raw": true,
+      "rawD": "M190,360 L190,510 L70,510 L70,541",
+      "points": []
+    },
+    {
+      "id": "lpK_toIshiyama",
+      "type": "branch",
+      "raw": true,
+      "rawD": "M190,360 L190,510 L130,510 L130,671",
+      "points": []
+    },
+    {
+      "id": "lpK_toShota",
+      "type": "branch",
+      "raw": true,
+      "rawD": "M190,820 L119,820",
+      "points": []
+    },
+    {
+      "id": "lpK_shotaDown",
+      "type": "parent",
+      "raw": true,
+      "rawD": "M190,883 L190,1135",
+      "points": []
+    },
+    {
+      "id": "lpK_toIchiyanagi",
+      "type": "branch",
+      "raw": true,
+      "rawD": "M190,1135 L70,1135 L70,1166",
+      "points": []
+    },
+    {
+      "id": "lpK_toFujita",
+      "type": "branch",
+      "raw": true,
+      "rawD": "M190,883 L190,1010 L130,1010 L130,1021",
+      "points": []
+    },
+    {
+      "id": "lpK_toKojima",
+      "type": "branch",
+      "raw": true,
+      "rawD": "M190,1135 L190,1285 L70,1285 L70,1316",
+      "points": []
+    },
+    {
+      "id": "lpK_toOumi",
+      "type": "branch",
+      "raw": true,
+      "rawD": "M190,1135 L190,1285 L150,1285 L150,1316",
+      "points": []
+    },
+    {
+      "id": "lpK_toFukasawa",
+      "type": "branch",
+      "raw": true,
+      "rawD": "M190,1135 L190,1435 L70,1435 L70,1466",
+      "points": []
+    },
+    {
+      "id": "lpK_toParnas",
+      "type": "branch",
+      "raw": true,
+      "rawD": "M190,1580 L271,1580",
+      "points": []
+    },
+    {
+      "id": "lpK_toHashira",
+      "type": "branch",
+      "raw": true,
+      "rawD": "M190,1705 L271,1705",
+      "points": []
+    },
+    {
+      "id": "lpK_toShimizu",
+      "type": "branch",
+      "raw": true,
+      "rawD": "M190,690 L271,690",
+      "points": []
+    },
+    {
+      "id": "lpK_toSushiyaSeoul",
+      "type": "branch",
+      "raw": true,
+      "rawD": "M190,820 L271,820",
+      "points": []
+    },
+    {
+      "id": "lpK_toNoaya",
+      "type": "branch",
+      "raw": true,
+      "rawD": "M190,1045 L271,1045",
+      "points": []
+    }
+  ]
+}

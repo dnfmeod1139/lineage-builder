@@ -227,6 +227,12 @@ html,body{height:100%;font-family:var(--font-main);background:var(--bg);color:va
       <button class="side-btn secondary" onclick="document.getElementById('importFile').click()">JSON Import</button>
       <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importJSON(event)">
     </div>
+
+    <!-- 🆕 샘플 -->
+    <div class="side-section">
+      <div class="side-section-label">샘플 (TAAM 본 앱)</div>
+      <button class="side-btn secondary" onclick="loadSample('kanesaka')">카네사카 계보 불러오기</button>
+    </div>
   </div>
 
   <!-- 메인 영역 (상단 툴바 + 캔버스) -->
@@ -296,16 +302,17 @@ var inspector = document.getElementById('inspector');
 var inspBody = document.getElementById('insp-body');
 var nodeList = document.getElementById('nodeList');
 
-// 캔버스 크기 — 타임라인에 따라 자동 확장
+// 캔버스 크기 — 타임라인 + 노드 최저 y / 최우측 x 에 따라 자동 확장
 function getCanvasSize(){
   var tl = STATE.timeline;
   var years = tl.end - tl.start + 1;
   var h = tl.marginTop + years * tl.pxPerYear + 100;
-  // 노드 최저 y 도 반영
+  var w = 800;
   STATE.nodes.forEach(function(n){
     if(n.y + 100 > h) h = n.y + 100;
+    if(n.x + 80 > w)  w = n.x + 80;
   });
-  return { w: 800, h: h };
+  return { w: w, h: h };
 }
 function resizeCanvas(){
   var sz = getCanvasSize();
@@ -963,6 +970,9 @@ function autoDecideSide(fromNode, toNode){
 }
 
 function calcLinePath(line){
+  // 🆕 raw path — 원본 d 속성 그대로 (TAAM 인용 데이터용)
+  if(line.raw && line.rawD) return line.rawD;
+  if(!line.to || !line.from) return '';
   var toNode = STATE.nodes.find(function(n){ return n.id === line.to.nodeId; });
   if(!toNode) return '';
 
@@ -1533,6 +1543,27 @@ function clearCanvas(){
   STATE.nodes = []; STATE.lines = [];
   STATE.selectedId = null; STATE.selectedType = null;
   renderAll();
+}
+
+// 🆕 샘플 데이터 (TAAM 본 앱) 불러오기
+async function loadSample(name){
+  try {
+    var res = await fetch('samples/' + name + '.json');
+    if(!res.ok){ toast('샘플 파일 못 찾음: samples/' + name + '.json'); return; }
+    var data = await res.json();
+    pushHistory();
+    STATE.timeline = data.timeline || STATE.timeline;
+    STATE.nodes = data.nodes || [];
+    STATE.lines = data.lines || [];
+    document.getElementById('tlStart').value = STATE.timeline.start;
+    document.getElementById('tlEnd').value = STATE.timeline.end;
+    document.getElementById('tlPxPerYear').value = STATE.timeline.pxPerYear;
+    renderAll();
+    toast('샘플 "' + name + '" 불러오기 완료 (노드 ' + STATE.nodes.length + ' / 라인 ' + STATE.lines.length + ')');
+  } catch(e){
+    console.warn('샘플 로드 실패', e);
+    toast('샘플 로드 실패: ' + e.message);
+  }
 }
 
 // 토스트
