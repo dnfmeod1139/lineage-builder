@@ -337,19 +337,27 @@ function renderTimeline(){
   timelineLayer.innerHTML = '';
   var tl = STATE.timeline;
   var axisX = 60;
+  if(!tl.excludedYears) tl.excludedYears = [];
+
   // 세로 축
   var line = document.createElementNS(SVG_NS, 'line');
   line.setAttribute('x1', axisX); line.setAttribute('y1', tl.marginTop - 10);
   line.setAttribute('x2', axisX); line.setAttribute('y2', yearToY(tl.end) + 10);
   line.setAttribute('class', 'timeline-line');
   timelineLayer.appendChild(line);
-  // 연도 마크
+
+  // 연도 마크 (제외된 연도는 dot + text 둘 다 X)
   for(var year = tl.start; year <= tl.end; year++){
+    if(tl.excludedYears.indexOf(year) !== -1) continue;  // 🆕 삭제된 연도 skip
     var y = yearToY(year);
+
+    // 포인트 dot
     var dot = document.createElementNS(SVG_NS, 'circle');
     dot.setAttribute('cx', axisX); dot.setAttribute('cy', y);
     dot.setAttribute('r', 3); dot.setAttribute('class', 'timeline-dot');
     timelineLayer.appendChild(dot);
+
+    // 연도 텍스트
     var txt = document.createElementNS(SVG_NS, 'text');
     txt.setAttribute('x', axisX - 10); txt.setAttribute('y', y + 4);
     txt.setAttribute('text-anchor', 'end');
@@ -357,21 +365,84 @@ function renderTimeline(){
     txt.setAttribute('data-year', year);
     txt.textContent = year;
     txt.addEventListener('click', function(e){
-      var yr = parseInt(this.getAttribute('data-year'));
-      var newYr = prompt('연도 변경 (이 위치의 연도 라벨)', yr);
-      if(newYr && !isNaN(parseInt(newYr))){
-        // 단순히 연도 라벨 변경 (시작 연도 조정)
-        var delta = parseInt(newYr) - yr;
-        STATE.timeline.start += delta;
-        STATE.timeline.end += delta;
-        document.getElementById('tlStart').value = STATE.timeline.start;
-        document.getElementById('tlEnd').value = STATE.timeline.end;
-        renderTimeline();
-      }
+      _editTimelineYear(parseInt(this.getAttribute('data-year')));
     });
     timelineLayer.appendChild(txt);
+
+    // 🆕 삭제 ✕ 버튼 (호버 시 표시)
+    var delBtn = document.createElementNS(SVG_NS, 'g');
+    delBtn.setAttribute('class', 'timeline-year-del');
+    delBtn.setAttribute('data-year', year);
+    delBtn.setAttribute('transform', 'translate(' + (axisX + 8) + ',' + y + ')');
+    delBtn.style.cursor = 'pointer';
+    delBtn.style.opacity = '0';
+    delBtn.style.transition = 'opacity .15s';
+    var bg = document.createElementNS(SVG_NS, 'circle');
+    bg.setAttribute('cx', 0); bg.setAttribute('cy', 0); bg.setAttribute('r', 7);
+    bg.setAttribute('fill', '#9B1C1C');
+    delBtn.appendChild(bg);
+    var x1 = document.createElementNS(SVG_NS, 'line');
+    x1.setAttribute('x1', -3); x1.setAttribute('y1', -3); x1.setAttribute('x2', 3); x1.setAttribute('y2', 3);
+    x1.setAttribute('stroke', '#fff'); x1.setAttribute('stroke-width', '1.5');
+    delBtn.appendChild(x1);
+    var x2 = document.createElementNS(SVG_NS, 'line');
+    x2.setAttribute('x1', -3); x2.setAttribute('y1', 3); x2.setAttribute('x2', 3); x2.setAttribute('y2', -3);
+    x2.setAttribute('stroke', '#fff'); x2.setAttribute('stroke-width', '1.5');
+    delBtn.appendChild(x2);
+    delBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      _deleteTimelineYear(parseInt(this.getAttribute('data-year')));
+    });
+    // 호버 시 보이게
+    delBtn.addEventListener('mouseenter', function(){ this.style.opacity = '1'; });
+    delBtn.addEventListener('mouseleave', function(){ this.style.opacity = '0'; });
+    // 같은 행의 텍스트에 hover 해도 보이게
+    txt.addEventListener('mouseenter', (function(btn){ return function(){ btn.style.opacity = '1'; }; })(delBtn));
+    txt.addEventListener('mouseleave', (function(btn){ return function(){ btn.style.opacity = '0'; }; })(delBtn));
+    timelineLayer.appendChild(delBtn);
   }
 }
+
+// 🆕 연도 클릭 시 — 변경 또는 삭제 메뉴
+function _editTimelineYear(yr){
+  var ans = prompt('연도 ' + yr + ' 편집\n· 숫자: 시작 연도 기준 이동\n· 빈 값 or "del": 이 연도 삭제 (라벨+포인트 모두)', yr);
+  if(ans === null) return;
+  var trimmed = ans.trim().toLowerCase();
+  if(trimmed === '' || trimmed === 'del'){
+    _deleteTimelineYear(yr);
+    return;
+  }
+  var parsed = parseInt(ans);
+  if(!isNaN(parsed)){
+    var delta = parsed - yr;
+    STATE.timeline.start += delta;
+    STATE.timeline.end += delta;
+    document.getElementById('tlStart').value = STATE.timeline.start;
+    document.getElementById('tlEnd').value = STATE.timeline.end;
+    renderTimeline();
+  }
+}
+
+// 🆕 연도 삭제 — 라벨 + 포인트 dot 모두 사라짐
+function _deleteTimelineYear(yr){
+  if(!STATE.timeline.excludedYears) STATE.timeline.excludedYears = [];
+  if(STATE.timeline.excludedYears.indexOf(yr) === -1){
+    STATE.timeline.excludedYears.push(yr);
+    renderTimeline();
+    toast('연도 ' + yr + ' 삭제됨');
+  }
+}
+
+// 🆕 삭제된 연도 복원 (디버그용 — 콘솔에서 호출 가능)
+window.restoreTimelineYear = function(yr){
+  if(!STATE.timeline.excludedYears) return;
+  var i = STATE.timeline.excludedYears.indexOf(yr);
+  if(i !== -1){
+    STATE.timeline.excludedYears.splice(i, 1);
+    renderTimeline();
+    toast('연도 ' + yr + ' 복원됨');
+  }
+};
 
 // 노드 ───────────────────────────────────────────────────────
 function startAddNode(kind){
@@ -492,50 +563,103 @@ function renderNodes(){
   });
 }
 
+// 🆕 글로벌 드래그 상태 — 노드마다 mousemove 등록하지 않음 (이전 N개 누적 문제 해결)
+var _dragState = null;
+var _dragRaf = null;
+
+function _getPointerPt(ev){
+  var rect = svg.getBoundingClientRect();
+  var vb = svg.viewBox.baseVal;
+  var scale = vb.width / rect.width;
+  var clientX = ev.touches ? (ev.touches[0]||ev.changedTouches[0]).clientX : ev.clientX;
+  var clientY = ev.touches ? (ev.touches[0]||ev.changedTouches[0]).clientY : ev.clientY;
+  return { x: (clientX - rect.left) * scale, y: (clientY - rect.top) * scale };
+}
+
 function _attachNodeDrag(g, node){
-  var dragging = false;
-  var startPt = null;
-  var startNode = null;
-  function getPt(ev){
-    var rect = svg.getBoundingClientRect();
-    var vb = svg.viewBox.baseVal;
-    var scale = vb.width / rect.width;
-    var clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
-    var clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
-    return {
-      x: (clientX - rect.left) * scale,
-      y: (clientY - rect.top) * scale
-    };
-  }
   function onDown(ev){
     if(STATE.mode !== 'select') return;
+    if(ev.target && ev.target.tagName === 'INPUT') return;
+    try { ev.preventDefault(); } catch(e){}
     ev.stopPropagation();
-    dragging = true;
-    startPt = getPt(ev);
-    startNode = { x: node.x, y: node.y };
+    var p = _getPointerPt(ev);
+    _dragState = {
+      node: node,
+      g: g,
+      startPt: p,
+      startX: node.x,
+      startY: node.y
+    };
     selectNode(node.id);
-  }
-  function onMove(ev){
-    if(!dragging) return;
-    var p = getPt(ev);
-    node.x = Math.round(startNode.x + (p.x - startPt.x));
-    node.y = Math.round(startNode.y + (p.y - startPt.y));
-    g.setAttribute('transform', 'translate(' + node.x + ',' + node.y + ')');
-    renderLines();  // 라인도 따라옴
-    updateInspector();
-  }
-  function onUp(){
-    if(dragging){
-      dragging = false;
-      renderNodeList();
-    }
+    g.style.cursor = 'grabbing';
   }
   g.addEventListener('mousedown', onDown);
-  g.addEventListener('touchstart', onDown, { passive: true });
-  document.addEventListener('mousemove', onMove);
-  document.addEventListener('touchmove', onMove, { passive: true });
-  document.addEventListener('mouseup', onUp);
-  document.addEventListener('touchend', onUp);
+  g.addEventListener('touchstart', onDown, { passive: false });
+}
+
+// 📌 document 에 1번만 등록 (전역 1개 핸들러)
+document.addEventListener('mousemove', _onDragMove);
+document.addEventListener('touchmove', _onDragMove, { passive: false });
+document.addEventListener('mouseup', _onDragEnd);
+document.addEventListener('touchend', _onDragEnd);
+document.addEventListener('touchcancel', _onDragEnd);
+
+function _onDragMove(ev){
+  if(!_dragState) return;
+  if(ev.cancelable && ev.touches){ try { ev.preventDefault(); } catch(e){} }
+  var p = _getPointerPt(ev);
+  var dx = p.x - _dragState.startPt.x;
+  var dy = p.y - _dragState.startPt.y;
+  // 수평/수직 고정
+  if(_dragState.node._lockH) dy = 0;  // 수평 고정 → y 안 변함
+  if(_dragState.node._lockV) dx = 0;  // 수직 고정 → x 안 변함
+  var newX = Math.round(_dragState.startX + dx);
+  var newY = Math.round(_dragState.startY + dy);
+  _dragState.node.x = newX;
+  _dragState.node.y = newY;
+  // 즉시 SVG transform 적용 (60fps 부드러움)
+  _dragState.g.setAttribute('transform', 'translate(' + newX + ',' + newY + ')');
+  // rAF 로 throttle — 라인 갱신 + 좌표 input 동기화
+  if(!_dragRaf){
+    _dragRaf = requestAnimationFrame(function(){
+      _dragRaf = null;
+      if(!_dragState) return;
+      _updateLinesForNode(_dragState.node.id);
+      _syncInspectorXY(_dragState.node);
+    });
+  }
+}
+
+function _onDragEnd(){
+  if(!_dragState) return;
+  var g = _dragState.g;
+  _dragState = null;
+  if(g) g.style.cursor = '';
+  if(_dragRaf){ cancelAnimationFrame(_dragRaf); _dragRaf = null; }
+  renderNodeList();
+  // 최종 한 번만 인스펙터 전체 재렌더
+  updateInspector();
+}
+
+// 해당 노드 관련 라인만 d 갱신 (전체 재렌더 X — 성능 큼)
+function _updateLinesForNode(nodeId){
+  if(!nodeId) return;
+  STATE.lines.forEach(function(line){
+    if(line.from.nodeId === nodeId || line.to.nodeId === nodeId){
+      var pathEl = document.getElementById('line_' + line.id);
+      if(pathEl) pathEl.setAttribute('d', calcLinePath(line));
+    }
+  });
+}
+
+// 인스펙터의 X/Y 입력 값만 갱신 (DOM 재생성 X)
+function _syncInspectorXY(node){
+  if(STATE.selectedType !== 'node' || STATE.selectedId !== node.id) return;
+  var inputs = inspBody.querySelectorAll('.insp-row-xy input');
+  if(inputs.length >= 2){
+    inputs[0].value = node.x;
+    inputs[1].value = node.y;
+  }
 }
 
 function selectNode(id){
@@ -801,6 +925,25 @@ function updateInspector(){
             '<button class="arrow-btn" onclick="moveSelectedBy(10,0)">→</button>' +
           '</div>' +
         '</div>' +
+        // 🆕 정렬 버튼 — 캔버스 가운데 기준 좌/중앙/우 정렬
+        '<div class="insp-row"><label>화면 정렬</label>' +
+          '<div style="display:flex;gap:4px;">' +
+            '<button class="side-btn secondary" style="flex:1;padding:7px 4px;font-size:10px;margin:0;" onclick="alignNode(\'left\')">← 왼쪽</button>' +
+            '<button class="side-btn secondary" style="flex:1;padding:7px 4px;font-size:10px;margin:0;" onclick="alignNode(\'center\')">⊙ 중앙</button>' +
+            '<button class="side-btn secondary" style="flex:1;padding:7px 4px;font-size:10px;margin:0;" onclick="alignNode(\'right\')">오른쪽 →</button>' +
+          '</div>' +
+        '</div>' +
+        // 🆕 드래그 잠금 체크박스
+        '<div class="insp-row"><label>드래그 제약</label>' +
+          '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#1a1a18;text-transform:none;font-weight:400;letter-spacing:0;margin-bottom:4px;cursor:pointer;">' +
+            '<input type="checkbox" ' + (n._lockH ? 'checked' : '') + ' onchange="toggleNodeLock(\''+ n.id +'\', \'H\', this.checked)">' +
+            '수평 고정 (좌/우만 이동)' +
+          '</label>' +
+          '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#1a1a18;text-transform:none;font-weight:400;letter-spacing:0;cursor:pointer;">' +
+            '<input type="checkbox" ' + (n._lockV ? 'checked' : '') + ' onchange="toggleNodeLock(\''+ n.id +'\', \'V\', this.checked)">' +
+            '수직 고정 (위/아래만 이동)' +
+          '</label>' +
+        '</div>' +
         '<div class="insp-row"><label>테두리 색</label>' +
           '<input type="color" value="' + n.color + '" oninput="updateNodeProp(\''+ n.id +'\', \'color\', this.value)"></div>' +
         '<div class="insp-row"><label>사진 (URL 또는 업로드)</label>' +
@@ -900,6 +1043,34 @@ function moveSelectedBy(dx, dy){
     n.x += dx; n.y += dy;
     renderNodes(); renderLines(); renderNodeList(); updateInspector();
   }
+}
+
+// 🆕 노드를 화면 좌/중앙/우 영역으로 정렬
+function alignNode(pos){
+  if(STATE.selectedType !== 'node') return;
+  var n = STATE.nodes.find(function(x){ return x.id === STATE.selectedId; });
+  if(!n) return;
+  pushHistory();
+  var sz = getCanvasSize();
+  // 좌측 영역 = 25%, 중앙 = 50%, 우측 = 75% (필요 시 비율 조정)
+  if(pos === 'left')   n.x = Math.round(sz.w * 0.25);
+  else if(pos === 'center') n.x = Math.round(sz.w * 0.50);
+  else if(pos === 'right')  n.x = Math.round(sz.w * 0.75);
+  renderNodes(); renderLines(); renderNodeList(); updateInspector();
+}
+
+// 🆕 노드 드래그 잠금 토글 (수평 고정 / 수직 고정)
+function toggleNodeLock(nodeId, axis, checked){
+  var n = STATE.nodes.find(function(x){ return x.id === nodeId; });
+  if(!n) return;
+  if(axis === 'H'){
+    n._lockH = checked;
+    if(checked) n._lockV = false;  // 둘 다 잠그는 건 의미 없음 (이동 X)
+  } else if(axis === 'V'){
+    n._lockV = checked;
+    if(checked) n._lockH = false;
+  }
+  updateInspector();
 }
 function uploadNodePhoto(id, input){
   var file = input.files && input.files[0];
