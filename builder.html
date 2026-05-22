@@ -580,11 +580,8 @@ function _getPointerPt(ev){
 function _attachNodeDrag(g, node){
   function onDown(ev){
     if(ev.target && ev.target.tagName === 'INPUT') return;
-    // 🆕 라인 그리기 모드 → 노드 mousedown 으로 라인 드래그 시작
-    if(STATE.mode === 'addLine'){
-      _startLineDrag(ev, node.id);
-      return;
-    }
+    // 🆕 라인 그리기 모드에서는 노드 mousedown 무시 (클릭 이벤트로 처리)
+    if(STATE.mode === 'addLine') return;
     if(STATE.mode !== 'select') return;
     try { ev.preventDefault(); } catch(e){}
     ev.stopPropagation();
@@ -691,109 +688,155 @@ function deleteSelected(){
 }
 
 // 라인 ───────────────────────────────────────────────────────
+// 🆕 2026.05.23 연속 클릭 방식 — 사용자가 원하는 위치에 정확히 꺾임 지정.
+//   시작 노드 클릭 → 빈 곳 클릭(꺾임) ... 반복 → 끝 노드 클릭 → 완성.
+//   마우스 무브 시 점선 미리보기가 현재 마우스까지 그어짐.
+//   노드 위에 마우스 올리면 박스 면 중앙으로 자동 스냅.
+var _lineDrawState = null;  // { fromNodeId, fromNode, type, waypoints: [], previewPath }
+
 function startAddLine(type){
+  // 이미 그리는 중이면 취소
+  if(_lineDrawState) _cancelLineDraw();
   STATE.mode = 'addLine';
-  STATE.pendingAdd = { type: type, fromNode: null };
-  toast('시작 노드를 드래그해서 끝 노드까지 놓기 (또는 클릭 두 번)');
+  STATE.pendingAdd = { type: type };
+  toast('① 시작 노드 클릭 (Esc=취소)');
   canvasWrap.style.cursor = 'crosshair';
 }
 
 function handleNodeClickForLine(nodeId){
   if(STATE.mode !== 'addLine') return;
-  if(!STATE.pendingAdd.fromNode){
-    STATE.pendingAdd.fromNode = nodeId;
-    toast('② 끝 노드 클릭');
+  var node = STATE.nodes.find(function(n){ return n.id === nodeId; });
+  if(!node) return;
+
+  if(!_lineDrawState){
+    // 시작 노드 확정
+    var temp = document.createElementNS(SVG_NS, 'path');
+    temp.setAttribute('fill', 'none');
+    temp.setAttribute('stroke', 'var(--burgundy)');
+    temp.setAttribute('stroke-width', STATE.pendingAdd.type === 'parent' ? 2.5 : 1.5);
+    temp.setAttribute('stroke-dasharray', '5 4');
+    temp.setAttribute('stroke-linecap', 'round');
+    temp.setAttribute('stroke-linejoin', 'round');
+    temp.style.pointerEvents = 'none';
+    linesLayer.appendChild(temp);
+    _lineDrawState = {
+      fromNodeId: nodeId,
+      fromNode: node,
+      type: STATE.pendingAdd.type,
+      waypoints: [],
+      previewPath: temp
+    };
+    toast('빈 곳 클릭=꺾임, 끝 노드 클릭=완성, Esc=취소');
   } else {
-    if(STATE.pendingAdd.fromNode === nodeId){ toast('다른 노드를 선택하세요'); return; }
-    _createLine(STATE.pendingAdd.fromNode, nodeId, STATE.pendingAdd.type);
+    if(nodeId === _lineDrawState.fromNodeId){
+      toast('같은 노드끼리 연결 불가');
+      return;
+    }
+    _finishLineDraw(nodeId);
   }
 }
 
-function _createLine(fromId, toId, type){
+// 빈 캔버스 클릭 → 꺾임점 추가
+function _handleCanvasClickForLineDraw(pt){
+  if(!_lineDrawState) return;
+  _lineDrawState.waypoints.push({ x: Math.round(pt.x), y: Math.round(pt.y) });
+  toast('꺾임 ' + _lineDrawState.waypoints.length + '개');
+}
+
+// 마우스 무브 → 미리보기
+function _updateLineDrawPreview(ev){
+  if(!_lineDrawState) return;
+  if(ev.cancelable && ev.touches){ try { ev.preventDefault(); } catch(e){} }
+  var pt = _getPointerPt(ev);
+  // 마우스 아래 노드 있으면 박스 면 중앙으로 스냅
+  var hover = _findNodeUnderPoint(pt);
+  if(hover && hover.id !== _lineDrawState.fromNodeId){
+    // 끝 노드 후보의 박스 면 중앙으로
+    var towardPt = _lineDrawState.waypoints.length > 0
+      ? _lineDrawState.waypoints[_lineDrawState.waypoints.length - 1]
+      : _lineDrawState.fromNode;
+    var side = _pickSideTowards(hover, towardPt);
+    pt = getNodeAnchor(hover, side);
+  }
+  _drawLinePreviewPath(pt);
+}
+
+function _drawLinePreviewPath(currentPt){
+  var fn = _lineDrawState.fromNode;
+  // 시작 anchor — 첫 waypoint 또는 currentPt 방향으로 가장 가까운 박스 면
+  var firstTarget = _lineDrawState.waypoints[0] || currentPt;
+  var startSide = _pickSideTowards(fn, firstTarget);
+  var startAnchor = getNodeAnchor(fn, startSide);
+  var pts = [startAnchor].concat(_lineDrawState.waypoints).concat([currentPt]);
+  var d = 'M' + pts[0].x + ',' + pts[0].y;
+  for(var i = 1; i < pts.length; i++){
+    d += ' L' + pts[i].x + ',' + pts[i].y;
+  }
+  _lineDrawState.previewPath.setAttribute('d', d);
+}
+
+function _findNodeUnderPoint(pt){
+  // pt 좌표 아래에 있는 노드 찾기 (박스 영역 + 약간 여유)
+  for(var i = STATE.nodes.length - 1; i >= 0; i--){
+    var n = STATE.nodes[i];
+    if(Math.abs(pt.x - n.x) <= 40 && Math.abs(pt.y - n.y) <= 40) return n;
+  }
+  return null;
+}
+
+function _pickSideTowards(node, target){
+  // 노드 중심 → target 방향으로 가장 가까운 박스 면 (4면 중 1개)
+  var dx = target.x - node.x;
+  var dy = target.y - node.y;
+  var ax = Math.abs(dx), ay = Math.abs(dy);
+  if(ax > ay){
+    return dx > 0 ? 'right' : 'left';
+  } else {
+    return dy > 0 ? 'bottom' : 'top';
+  }
+}
+
+function _finishLineDraw(toNodeId){
   pushHistory();
   var line = {
     id: genId('line'),
-    type: type,
-    from: { nodeId: fromId, side: 'auto' },
-    to: { nodeId: toId, side: 'auto' },
-    points: []
+    type: _lineDrawState.type,
+    from: { nodeId: _lineDrawState.fromNodeId, side: 'auto' },
+    to: { nodeId: toNodeId, side: 'auto' },
+    points: _lineDrawState.waypoints.slice()
   };
   STATE.lines.push(line);
+  _cleanupLineDraw();
   renderLines();
-  STATE.mode = 'select';
-  STATE.pendingAdd = null;
-  canvasWrap.style.cursor = '';
   selectLine(line.id);
-}
-
-// 🆕 드래그로 라인 그리기 — addLine 모드에서 노드 mousedown → 다른 노드 mouseup
-var _lineDragState = null;   // { fromNodeId, type, tempPath }
-function _startLineDrag(ev, nodeId){
-  if(STATE.mode !== 'addLine') return false;
-  ev.stopPropagation();
-  if(ev.cancelable) try { ev.preventDefault(); } catch(e){}
-  var fromNode = STATE.nodes.find(function(n){ return n.id === nodeId; });
-  if(!fromNode) return false;
-
-  // 임시 path
-  var temp = document.createElementNS(SVG_NS, 'path');
-  temp.setAttribute('fill', 'none');
-  temp.setAttribute('stroke', 'var(--burgundy)');
-  temp.setAttribute('stroke-width', STATE.pendingAdd.type === 'parent' ? 2.5 : 1.5);
-  temp.setAttribute('stroke-dasharray', '4 4');
-  temp.setAttribute('stroke-linecap', 'round');
-  linesLayer.appendChild(temp);
-
-  _lineDragState = {
-    fromNodeId: nodeId,
-    fromNode: fromNode,
-    type: STATE.pendingAdd.type,
-    tempPath: temp
-  };
-  toast('드래그해서 끝 노드 위에서 놓기');
-  return true;
-}
-
-function _updateLineDrag(ev){
-  if(!_lineDragState) return;
-  if(ev.cancelable && ev.touches){ try { ev.preventDefault(); } catch(e){} }
-  var p = _getPointerPt(ev);
-  // 시작점 = 노드 중앙 (드래그 동안은 단순 직선으로 미리보기)
-  var fn = _lineDragState.fromNode;
-  _lineDragState.tempPath.setAttribute('d', 'M' + fn.x + ',' + fn.y + ' L' + p.x + ',' + p.y);
-}
-
-function _endLineDrag(ev){
-  if(!_lineDragState) return;
-  if(_lineDragState.tempPath && _lineDragState.tempPath.parentNode){
-    _lineDragState.tempPath.parentNode.removeChild(_lineDragState.tempPath);
-  }
-  // 마우스 업 위치 아래의 노드 찾기
-  var clientX = ev.changedTouches ? ev.changedTouches[0].clientX : ev.clientX;
-  var clientY = ev.changedTouches ? ev.changedTouches[0].clientY : ev.clientY;
-  var el = document.elementFromPoint(clientX, clientY);
-  var targetG = el && el.closest('.node-g');
-  if(targetG){
-    var toId = targetG.getAttribute('data-node-id');
-    if(toId && toId !== _lineDragState.fromNodeId){
-      _createLine(_lineDragState.fromNodeId, toId, _lineDragState.type);
-    } else if(toId === _lineDragState.fromNodeId){
-      toast('같은 노드끼리는 연결 불가');
-    }
-  } else {
-    toast('노드 위에서 놓아야 라인 생성');
-  }
-  _lineDragState = null;
-  // addLine 모드 종료
   STATE.mode = 'select';
   STATE.pendingAdd = null;
   canvasWrap.style.cursor = '';
 }
 
-document.addEventListener('mousemove', _updateLineDrag);
-document.addEventListener('touchmove', _updateLineDrag, { passive: false });
-document.addEventListener('mouseup', _endLineDrag);
-document.addEventListener('touchend', _endLineDrag);
+function _cancelLineDraw(){
+  _cleanupLineDraw();
+  STATE.mode = 'select';
+  STATE.pendingAdd = null;
+  canvasWrap.style.cursor = '';
+  toast('라인 그리기 취소');
+}
+
+function _cleanupLineDraw(){
+  if(_lineDrawState && _lineDrawState.previewPath && _lineDrawState.previewPath.parentNode){
+    _lineDrawState.previewPath.parentNode.removeChild(_lineDrawState.previewPath);
+  }
+  _lineDrawState = null;
+}
+
+// 전역 마우스무브 — 미리보기 + Esc
+document.addEventListener('mousemove', _updateLineDrawPreview);
+document.addEventListener('touchmove', _updateLineDrawPreview, { passive: false });
+document.addEventListener('keydown', function(ev){
+  if(ev.key === 'Escape' && _lineDrawState){
+    _cancelLineDraw();
+  }
+});
 
 // 🆕 2026.05.23: 박스 4면 정중앙 진입 — 노드 크기 70 통일.
 //   부모 출구 (하단) 는 이름 영역 끝 (cy+67) → 1순위 룰 (이름 침범 X)
@@ -835,14 +878,24 @@ function calcLinePath(line){
   var toNode = STATE.nodes.find(function(n){ return n.id === line.to.nodeId; });
   if(!fromNode || !toNode) return '';
 
-  var sides = autoDecideSide(fromNode, toNode);
+  // 🆕 waypoints 가 있으면 — 첫/마지막 waypoint 방향으로 박스 면 자동 결정
+  var sides;
+  if(line.points && line.points.length > 0){
+    sides = {
+      from: _pickSideTowards(fromNode, line.points[0]),
+      to: _pickSideTowards(toNode, line.points[line.points.length - 1])
+    };
+  } else {
+    sides = autoDecideSide(fromNode, toNode);
+  }
+  // 사용자가 인스펙터에서 명시 지정한 면은 우선
   if(line.from.side && line.from.side !== 'auto') sides.from = line.from.side;
   if(line.to.side && line.to.side !== 'auto') sides.to = line.to.side;
 
   var p1 = getNodeAnchor(fromNode, sides.from);
   var p2 = getNodeAnchor(toNode, sides.to);
 
-  // 꺾임점이 있으면 그것을 통과
+  // 꺾임점이 있으면 그것을 직선으로 통과
   if(line.points && line.points.length > 0){
     var d = 'M' + p1.x + ',' + p1.y;
     line.points.forEach(function(pt){
@@ -1252,19 +1305,32 @@ function renderNodeList(){
   }
 }
 
-// 캔버스 클릭 핸들러
+// 캔버스 클릭 핸들러 (mouseup 으로 변경 — 드래그와 구분)
 canvasWrap.addEventListener('click', function(ev){
   if(STATE.mode === 'addNode'){
-    var rect = svg.getBoundingClientRect();
-    var vb = svg.viewBox.baseVal;
-    var scale = vb.width / rect.width;
-    var x = (ev.clientX - rect.left) * scale;
-    var y = (ev.clientY - rect.top) * scale;
-    addNodeAt(x, y, STATE.pendingAdd.kind);
+    var pt = _getPointerPt(ev);
+    addNodeAt(pt.x, pt.y, STATE.pendingAdd.kind);
     return;
   }
+
+  // 🆕 라인 그리기 모드 — 노드 클릭 또는 빈 곳 클릭
+  if(STATE.mode === 'addLine'){
+    var nodeG = ev.target.closest('.node-g');
+    if(nodeG){
+      // 노드 클릭 → 시작/끝 노드 지정
+      handleNodeClickForLine(nodeG.getAttribute('data-node-id'));
+      return;
+    }
+    // 빈 곳 클릭 → 꺾임 추가 (시작 노드 이미 선택된 상태에서만)
+    if(_lineDrawState){
+      var pt = _getPointerPt(ev);
+      _handleCanvasClickForLineDraw(pt);
+    }
+    return;
+  }
+
   // 캔버스 빈 영역 클릭 → 선택 해제
-  if(ev.target === svg || ev.target.tagName === 'svg'){
+  if(ev.target === svg || ev.target.tagName === 'svg' || ev.target.tagName === 'rect' && ev.target.classList.contains('svg-bg')){
     STATE.selectedId = null;
     STATE.selectedType = null;
     renderNodes();
@@ -1272,15 +1338,6 @@ canvasWrap.addEventListener('click', function(ev){
     renderNodeList();
     updateInspector();
   }
-});
-
-// 노드 클릭 (라인 모드일 때 양 끝 지정)
-nodesLayer.addEventListener('click', function(ev){
-  if(STATE.mode !== 'addLine') return;
-  var g = ev.target.closest('.node-g');
-  if(!g) return;
-  var nodeId = g.getAttribute('data-node-id');
-  handleNodeClickForLine(nodeId);
 });
 
 // 키보드 단축키
