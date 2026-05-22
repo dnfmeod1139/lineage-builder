@@ -692,14 +692,34 @@ function deleteSelected(){
 //   시작 노드 클릭 → 빈 곳 클릭(꺾임) ... 반복 → 끝 노드 클릭 → 완성.
 //   마우스 무브 시 점선 미리보기가 현재 마우스까지 그어짐.
 //   노드 위에 마우스 올리면 박스 면 중앙으로 자동 스냅.
-var _lineDrawState = null;  // { fromNodeId, fromNode, type, waypoints: [], previewPath }
+//   ⭐ 직각 모드: 모든 segment 가 90°/180°/-90° 로 자동 스냅. Shift 로 자유.
+//   ⭐ 가지 라인은 부모 라인 위에서도 시작 가능 (라인 클릭).
+var _lineDrawState = null;  // { from: {type:'node'|'line', nodeId|lineId, x, y}, type, waypoints: [], previewPath }
+var _orthoMode = true;       // 직각 모드 (기본 ON, Shift 로 일시 해제)
+var _shiftHeld = false;
+document.addEventListener('keydown', function(ev){ if(ev.key === 'Shift') _shiftHeld = true; });
+document.addEventListener('keyup',   function(ev){ if(ev.key === 'Shift') _shiftHeld = false; });
+
+function _useOrtho(){ return _orthoMode && !_shiftHeld; }  // 평소 직각, Shift 누르면 자유
+
+// 직전 점 기준 마우스 위치를 가까운 직각 (수평/수직) 으로 스냅
+function _snapOrthogonal(prev, cur){
+  if(!_useOrtho()) return cur;
+  var dx = Math.abs(cur.x - prev.x);
+  var dy = Math.abs(cur.y - prev.y);
+  if(dx >= dy) return { x: cur.x, y: prev.y };   // 수평 (180° 또는 0°)
+  else         return { x: prev.x, y: cur.y };   // 수직 (90° 또는 -90°)
+}
 
 function startAddLine(type){
   // 이미 그리는 중이면 취소
   if(_lineDrawState) _cancelLineDraw();
   STATE.mode = 'addLine';
   STATE.pendingAdd = { type: type };
-  toast('① 시작 노드 클릭 (Esc=취소)');
+  var hint = type === 'branch'
+    ? '① 시작 노드 또는 부모 라인 클릭 (Esc=취소, Shift=자유각도)'
+    : '① 시작 노드 클릭 (Esc=취소, Shift=자유각도)';
+  toast(hint);
   canvasWrap.style.cursor = 'crosshair';
 }
 
@@ -710,25 +730,12 @@ function handleNodeClickForLine(nodeId){
 
   if(!_lineDrawState){
     // 시작 노드 확정
-    var temp = document.createElementNS(SVG_NS, 'path');
-    temp.setAttribute('fill', 'none');
-    temp.setAttribute('stroke', 'var(--burgundy)');
-    temp.setAttribute('stroke-width', STATE.pendingAdd.type === 'parent' ? 2.5 : 1.5);
-    temp.setAttribute('stroke-dasharray', '5 4');
-    temp.setAttribute('stroke-linecap', 'round');
-    temp.setAttribute('stroke-linejoin', 'round');
-    temp.style.pointerEvents = 'none';
-    linesLayer.appendChild(temp);
-    _lineDrawState = {
-      fromNodeId: nodeId,
-      fromNode: node,
-      type: STATE.pendingAdd.type,
-      waypoints: [],
-      previewPath: temp
-    };
+    _initLineDrawPreview();
+    _lineDrawState.from = { type: 'node', nodeId: nodeId };
+    _lineDrawState.fromNode = node;
     toast('빈 곳 클릭=꺾임, 끝 노드 클릭=완성, Esc=취소');
   } else {
-    if(nodeId === _lineDrawState.fromNodeId){
+    if(_lineDrawState.from.type === 'node' && _lineDrawState.from.nodeId === nodeId){
       toast('같은 노드끼리 연결 불가');
       return;
     }
@@ -736,37 +743,106 @@ function handleNodeClickForLine(nodeId){
   }
 }
 
-// 빈 캔버스 클릭 → 꺾임점 추가
-function _handleCanvasClickForLineDraw(pt){
-  if(!_lineDrawState) return;
-  _lineDrawState.waypoints.push({ x: Math.round(pt.x), y: Math.round(pt.y) });
-  toast('꺾임 ' + _lineDrawState.waypoints.length + '개');
+// 🆕 가지 라인: 부모 라인 위 클릭 시 그 지점을 시작점으로
+function handleLineClickForLineDraw(line, clickPt){
+  if(STATE.mode !== 'addLine') return false;
+  if(STATE.pendingAdd.type !== 'branch') return false;   // 가지 라인만 부모에서 시작 가능
+  if(_lineDrawState) return false;                       // 이미 그리는 중이면 무시
+  _initLineDrawPreview();
+  _lineDrawState.from = {
+    type: 'line',
+    lineId: line.id,
+    x: Math.round(clickPt.x),
+    y: Math.round(clickPt.y)
+  };
+  _lineDrawState.fromNode = null;
+  toast('부모 라인 (' + clickPt.x.toFixed(0) + ',' + clickPt.y.toFixed(0) + ') 에서 분기 — 빈 곳/끝 노드 클릭');
+  return true;
 }
 
-// 마우스 무브 → 미리보기
+function _initLineDrawPreview(){
+  var temp = document.createElementNS(SVG_NS, 'path');
+  temp.setAttribute('fill', 'none');
+  temp.setAttribute('stroke', 'var(--burgundy)');
+  temp.setAttribute('stroke-width', STATE.pendingAdd.type === 'parent' ? 2.5 : 1.5);
+  temp.setAttribute('stroke-dasharray', '5 4');
+  temp.setAttribute('stroke-linecap', 'round');
+  temp.setAttribute('stroke-linejoin', 'round');
+  temp.style.pointerEvents = 'none';
+  linesLayer.appendChild(temp);
+  _lineDrawState = {
+    from: null,
+    fromNode: null,
+    type: STATE.pendingAdd.type,
+    waypoints: [],
+    previewPath: temp
+  };
+}
+
+// 빈 캔버스 클릭 → 꺾임점 추가 (직각 스냅 적용)
+function _handleCanvasClickForLineDraw(pt){
+  if(!_lineDrawState) return;
+  var snapped = _snapWaypoint(pt);
+  _lineDrawState.waypoints.push({ x: Math.round(snapped.x), y: Math.round(snapped.y) });
+  toast('꺾임 ' + _lineDrawState.waypoints.length + '개' + (_useOrtho() ? ' (직각)' : ' (자유)'));
+}
+
+// 직전 점 기준으로 직각 스냅
+function _snapWaypoint(pt){
+  var prev = _getDrawPrevPoint();
+  return _snapOrthogonal(prev, pt);
+}
+
+// 미리보기의 직전 점 (시작 anchor 또는 마지막 waypoint)
+function _getDrawPrevPoint(){
+  if(!_lineDrawState) return null;
+  if(_lineDrawState.waypoints.length > 0){
+    return _lineDrawState.waypoints[_lineDrawState.waypoints.length - 1];
+  }
+  return _getDrawStartAnchor(null);
+}
+
+// 시작점 (노드 박스 면 또는 부모 라인 위 점)
+function _getDrawStartAnchor(towardTarget){
+  if(!_lineDrawState || !_lineDrawState.from) return { x: 0, y: 0 };
+  var from = _lineDrawState.from;
+  if(from.type === 'line'){
+    return { x: from.x, y: from.y };
+  }
+  // node — towardTarget 방향으로 가장 가까운 박스 면
+  var fn = _lineDrawState.fromNode;
+  if(!fn) return { x: 0, y: 0 };
+  var target = towardTarget || _lineDrawState.waypoints[0] || { x: fn.x, y: fn.y + 100 };
+  var side = _pickSideTowards(fn, target);
+  return getNodeAnchor(fn, side);
+}
+
+// 마우스 무브 → 미리보기 (직각 스냅 + 노드 박스 면 스냅)
 function _updateLineDrawPreview(ev){
   if(!_lineDrawState) return;
   if(ev.cancelable && ev.touches){ try { ev.preventDefault(); } catch(e){} }
   var pt = _getPointerPt(ev);
-  // 마우스 아래 노드 있으면 박스 면 중앙으로 스냅
+
+  // 1) 끝 노드 후보 위에 있으면 박스 면 중앙으로 스냅 (직각 모드와 무관)
+  var fromNodeId = _lineDrawState.from && _lineDrawState.from.type === 'node' ? _lineDrawState.from.nodeId : null;
   var hover = _findNodeUnderPoint(pt);
-  if(hover && hover.id !== _lineDrawState.fromNodeId){
-    // 끝 노드 후보의 박스 면 중앙으로
+  if(hover && hover.id !== fromNodeId){
     var towardPt = _lineDrawState.waypoints.length > 0
       ? _lineDrawState.waypoints[_lineDrawState.waypoints.length - 1]
-      : _lineDrawState.fromNode;
+      : _getDrawStartAnchor(pt);
     var side = _pickSideTowards(hover, towardPt);
     pt = getNodeAnchor(hover, side);
+  } else {
+    // 2) 직각 스냅 (직전 점 기준)
+    pt = _snapWaypoint(pt);
   }
   _drawLinePreviewPath(pt);
 }
 
 function _drawLinePreviewPath(currentPt){
-  var fn = _lineDrawState.fromNode;
   // 시작 anchor — 첫 waypoint 또는 currentPt 방향으로 가장 가까운 박스 면
   var firstTarget = _lineDrawState.waypoints[0] || currentPt;
-  var startSide = _pickSideTowards(fn, firstTarget);
-  var startAnchor = getNodeAnchor(fn, startSide);
+  var startAnchor = _getDrawStartAnchor(firstTarget);
   var pts = [startAnchor].concat(_lineDrawState.waypoints).concat([currentPt]);
   var d = 'M' + pts[0].x + ',' + pts[0].y;
   for(var i = 1; i < pts.length; i++){
@@ -798,10 +874,23 @@ function _pickSideTowards(node, target){
 
 function _finishLineDraw(toNodeId){
   pushHistory();
+  // 🆕 from 구조 — 노드 또는 부모 라인 위 점
+  var from;
+  if(_lineDrawState.from.type === 'line'){
+    from = {
+      type: 'line',
+      lineId: _lineDrawState.from.lineId,
+      x: _lineDrawState.from.x,
+      y: _lineDrawState.from.y,
+      side: 'auto'
+    };
+  } else {
+    from = { nodeId: _lineDrawState.from.nodeId, side: 'auto' };
+  }
   var line = {
     id: genId('line'),
     type: _lineDrawState.type,
-    from: { nodeId: _lineDrawState.fromNodeId, side: 'auto' },
+    from: from,
     to: { nodeId: toNodeId, side: 'auto' },
     points: _lineDrawState.waypoints.slice()
   };
@@ -874,26 +963,45 @@ function autoDecideSide(fromNode, toNode){
 }
 
 function calcLinePath(line){
-  var fromNode = STATE.nodes.find(function(n){ return n.id === line.from.nodeId; });
   var toNode = STATE.nodes.find(function(n){ return n.id === line.to.nodeId; });
-  if(!fromNode || !toNode) return '';
+  if(!toNode) return '';
 
-  // 🆕 waypoints 가 있으면 — 첫/마지막 waypoint 방향으로 박스 면 자동 결정
-  var sides;
-  if(line.points && line.points.length > 0){
-    sides = {
-      from: _pickSideTowards(fromNode, line.points[0]),
-      to: _pickSideTowards(toNode, line.points[line.points.length - 1])
-    };
+  // 🆕 시작점 — 노드 박스 면 또는 부모 라인 위 점
+  var p1, fromForSide;
+  if(line.from.type === 'line' && line.from.lineId){
+    // 부모 라인 위에서 분기
+    p1 = { x: line.from.x, y: line.from.y };
+    fromForSide = null;  // 면 결정 불필요
   } else {
-    sides = autoDecideSide(fromNode, toNode);
+    var fromNode = STATE.nodes.find(function(n){ return n.id === line.from.nodeId; });
+    if(!fromNode) return '';
+    fromForSide = fromNode;
   }
-  // 사용자가 인스펙터에서 명시 지정한 면은 우선
-  if(line.from.side && line.from.side !== 'auto') sides.from = line.from.side;
-  if(line.to.side && line.to.side !== 'auto') sides.to = line.to.side;
 
-  var p1 = getNodeAnchor(fromNode, sides.from);
-  var p2 = getNodeAnchor(toNode, sides.to);
+  // 끝 노드 면 결정
+  var toSide;
+  if(line.points && line.points.length > 0){
+    toSide = _pickSideTowards(toNode, line.points[line.points.length - 1]);
+  } else if(fromForSide){
+    toSide = autoDecideSide(fromForSide, toNode).to;
+  } else {
+    // 부모 라인에서 시작 — 시작점 좌표 기준
+    toSide = _pickSideTowards(toNode, p1);
+  }
+  if(line.to.side && line.to.side !== 'auto') toSide = line.to.side;
+  var p2 = getNodeAnchor(toNode, toSide);
+
+  // 시작점이 노드인 경우 박스 면 anchor 갱신
+  if(fromForSide){
+    var fromSide;
+    if(line.points && line.points.length > 0){
+      fromSide = _pickSideTowards(fromForSide, line.points[0]);
+    } else {
+      fromSide = autoDecideSide(fromForSide, toNode).from;
+    }
+    if(line.from.side && line.from.side !== 'auto') fromSide = line.from.side;
+    p1 = getNodeAnchor(fromForSide, fromSide);
+  }
 
   // 꺾임점이 있으면 그것을 직선으로 통과
   if(line.points && line.points.length > 0){
@@ -958,9 +1066,13 @@ function renderLines(){
     hitPath.style.cursor = 'pointer';
     hitPath.addEventListener('click', function(ev){
       ev.stopPropagation();
-      // 🆕 이미 선택된 라인이면 → 클릭한 위치에 꺾임 포인트 추가
+      var p = _getPointerPt(ev);
+      // 🆕 가지 라인 그리기 모드 + 아직 시작 안 됨 → 이 라인의 클릭 지점을 시작점으로
+      if(STATE.mode === 'addLine' && STATE.pendingAdd.type === 'branch' && !_lineDrawState){
+        if(handleLineClickForLineDraw(line, p)) return;
+      }
+      // 이미 선택된 라인이면 → 클릭한 위치에 꺾임 포인트 추가
       if(STATE.selectedId === line.id){
-        var p = _getPointerPt(ev);
         _addWaypointAt(line, p);
       } else {
         selectLine(line.id);
@@ -1088,12 +1200,19 @@ function addLineWaypoint(){
   var line = STATE.lines.find(function(l){ return l.id === STATE.selectedId; });
   if(!line) return;
   pushHistory();
-  // 중간 지점 추가
-  var fromNode = STATE.nodes.find(function(n){ return n.id === line.from.nodeId; });
+  // 시작점 (노드 or 부모 라인 위)
+  var fromX, fromY;
+  if(line.from.type === 'line'){
+    fromX = line.from.x; fromY = line.from.y;
+  } else {
+    var fromNode = STATE.nodes.find(function(n){ return n.id === line.from.nodeId; });
+    if(!fromNode) return;
+    fromX = fromNode.x; fromY = fromNode.y;
+  }
   var toNode = STATE.nodes.find(function(n){ return n.id === line.to.nodeId; });
-  if(!fromNode || !toNode) return;
-  var midX = (fromNode.x + toNode.x) / 2;
-  var midY = (fromNode.y + toNode.y) / 2;
+  if(!toNode) return;
+  var midX = (fromX + toNode.x) / 2;
+  var midY = (fromY + toNode.y) / 2;
   if(!line.points) line.points = [];
   line.points.push({ x: Math.round(midX), y: Math.round(midY) });
   renderLines();
